@@ -16,6 +16,13 @@
  *         -3 if the archive contains a header with an invalid checksum value
  */
 int check_archive(int tar_fd) {
+    if (tar_fd == NULL)
+        return 0;
+    
+
+    
+    
+    
     return 0;
 }
 
