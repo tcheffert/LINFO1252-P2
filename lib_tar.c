@@ -18,12 +18,28 @@
 int check_archive(int tar_fd) {
     if (tar_fd == NULL)
         return 0;
-    
 
-    
-    
-    
-    return 0;
+    tar_header_t header;
+    int non_null_headers_count;
+    while (read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
+        // Check if the header is null => end of archive
+        if (header.name[0] == '\0') {
+            break;
+        }
+
+        // Check magic value
+        if (strncmp(header.magic, TMAGIC, TMAGLEN - 1) != 0 || header.magic[TMAGLEN - 1] != '\0') {
+            return -1;
+        }
+
+        // Check version value
+        if (strncmp(header.version, TVERSION, 2) != 0) {
+            return -2;
+        }
+
+        non_null_headers_count++;
+    }
+    return non_null_headers_count;
 }
 
 /**
