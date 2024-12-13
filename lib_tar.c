@@ -1,4 +1,5 @@
 #include "lib_tar.h"
+#include <string.h>
 
 /**
  * Checks whether the archive is valid.
@@ -52,6 +53,18 @@ int check_archive(int tar_fd) {
  *         any other value otherwise.
  */
 int exists(int tar_fd, char *path) {
+    tar_header_t header;
+    while (read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
+        // Check if the header is null => end of archive
+        if (header.name[0] == '\0') {
+            break;
+        }
+
+        // Check if the header name matches the path
+        if (strncmp(header.name, path, strlen(path)) == 0) {
+            return 1;
+        }
+    }
     return 0;
 }
 
@@ -65,6 +78,20 @@ int exists(int tar_fd, char *path) {
  *         any other value otherwise.
  */
 int is_dir(int tar_fd, char *path) {
+    tar_header_t header;
+    while (read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
+        // Check if the header is null => end of archive
+        if (header.name[0] == '\0') {
+            break;
+        }
+
+        // Check if the header name matches the path
+        if (strncmp(header.name, path, strlen(path)) == 0) {
+            if (header.typeflag == DIRTYPE) { // directory type 
+                return 1;
+            }
+        }
+    }
     return 0;
 }
 
@@ -78,6 +105,19 @@ int is_dir(int tar_fd, char *path) {
  *         any other value otherwise.
  */
 int is_file(int tar_fd, char *path) {
+    tar_header_t header;
+    while (read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
+        // Check if the header is null => end of archive
+        if (header.name[0] == '\0') {
+            break;
+        }
+
+        // Check if the header name matches the path
+        if (strncmp(header.name, path, strlen(path)) == 0) {
+            if (header.typeflag == REGTYPE || header.typeflag == AREGTYPE) { // file and regular file type
+            }
+        }
+    }
     return 0;
 }
 
@@ -90,6 +130,20 @@ int is_file(int tar_fd, char *path) {
  *         any other value otherwise.
  */
 int is_symlink(int tar_fd, char *path) {
+    tar_header_t header;
+    while (read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
+        // Check if the header is null => end of archive
+        if (header.name[0] == '\0') {
+            break;
+        }
+
+        // Check if the header name matches the path
+        if (strncmp(header.name, path, strlen(path)) == 0) {
+            if (header.typeflag == SYMTYPE) { // symlink type
+                return 1;
+            }
+        }
+    }
     return 0;
 }
 
@@ -117,7 +171,26 @@ int is_symlink(int tar_fd, char *path) {
  *         any other value otherwise.
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
-    return 0;
+    tar_header_t header;
+    int count = 0;
+    while(read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
+        // Check if the header is null => end of archive
+        if (header.name[0] == '\0') {
+            break;
+        }
+
+        // Check if the header name matches the path
+        if (strncmp(header.name, path, strlen(path)) == 0) {
+            // Check if the entry is a directory
+            if (header.typeflag == DIRTYPE) {
+                // Copy the entry name to the entries array
+                strncpy(entries[count], header.name, strlen(header.name));
+                count++;
+            }
+        }
+    }
+    *no_entries = count;
+    return count == 0 ? 0 : 1;
 }
 
 /**
@@ -139,5 +212,35 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
  *
  */
 ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *len) {
-    return 0;
+    tar_header_t header;
+    int count = 0;
+    int tot_size = 0;
+    while(read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
+        // Check if the header is null => end of archive
+        if (header.name[0] == '\0') {
+            break;
+        }
+
+        // Check if the header name matches the path
+        if (strncmp(header.name, path, strlen(path)) == 0) {
+            // Check if the entry is a file
+            if (header.typeflag == REGTYPE || header.typeflag == AREGTYPE) {
+                // Check if the offset is outside the file total length
+                if (offset > header.size) {
+                    return -2;
+                }
+
+                // Read the file content
+                lseek(tar_fd, offset, SEEK_CUR);
+                read(tar_fd, dest, header.size);
+                count = header.size;
+                tot_size = header.size;
+            }
+        }
+    }
+    *len = count;
+    if (count == 0) {
+        return -1;
+    }
+    return tot_size - count; // remaining bytes left to be read to reach the end of the file , if 0 then file was read in its entirety
 }
