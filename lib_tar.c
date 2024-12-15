@@ -105,6 +105,8 @@ int is_dir(int tar_fd, char *path) {
             if (header.typeflag == DIRTYPE) { // directory type 
                 return 1;
             }
+
+            break;
         }
     }
     return 0;
@@ -129,10 +131,17 @@ int is_file(int tar_fd, char *path) {
 
         // Check if the header name matches the path
         if (strncmp(header.name, path, strlen(path)) == 0) {
-            if (header.typeflag == REGTYPE || header.typeflag == AREGTYPE) { // file and regular file type
+            if (header.typeflag == REGTYPE || header.typeflag == AREGTYPE) { 
+                // file and regular file type
+                return 1; //OK
             }
+
+            break; //L'entrée existe bien MAIS n'est pas un file
         }
+        
     }
+    // Reset file pointer au début de l'archive
+    lseek(tar_fd, 0, SEEK_SET);
     return 0;
 }
 
@@ -157,8 +166,11 @@ int is_symlink(int tar_fd, char *path) {
             if (header.typeflag == SYMTYPE) { // symlink type
                 return 1;
             }
+            break;
         }
     }
+    // Reset file pointer au début de l'archive
+    lseek(tar_fd, 0, SEEK_SET);
     return 0;
 }
 
@@ -256,7 +268,7 @@ ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *
             }
         }
 
-        //Skip file content (alignement des blocs)
+        //Skip le contenu des files qui correspondent pas
         size_t file_size = TAR_INT(header.size);
         size_t skip_blocks = (file_size + 511) / 512; // Aligner à des blocs de 512-bytes
         lseek(tar_fd, skip_blocks * 512, SEEK_CUR);
