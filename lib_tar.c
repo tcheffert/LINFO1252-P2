@@ -79,6 +79,7 @@ int exists(int tar_fd, char *path) {
             return 1;
         }
     }
+    lseek(tar_fd, 0, SEEK_SET);
     return 0;
 }
 
@@ -225,36 +226,43 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
  *         the end of the file.
  *
  */
-ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *len) {
+ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *len) {    
     tar_header_t header;
-    int count = 0;
-    int tot_size = 0;
-    while(read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
-        // Check if the header is null => end of archive
-        if (header.name[0] == '\0') {
-            break;
-        }
+    size_t dest_len = *len;
+    lseek(tar_fd, 0, SEEK_SET);
 
-        // Check if the header name matches the path
-        if (strncmp(header.name, path, strlen(path)) == 0) {
-            // Check if the entry is a file
-            if (header.typeflag == REGTYPE || header.typeflag == AREGTYPE) {
-                // Check if the offset is outside the file total length
-                if (offset > header.size) {
-                    return -2;
-                }
+    while (read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t) && header.name[0] != '\0') {
+        if (strcmp(header.name, path) == 0) {
+            // Handle symlinks
+            if (header.typeflag == SYMTYPE || header.typeflag == LNKTYPE) {
+                return read_file(tar_fd, header.linkname, offset, dest, len);
+            }
 
-                // Read the file content
+            // Handle regular files
+            if (header.typeflag == AREGTYPE || header.typeflag == REGTYPE) {
+                size_t file_size = TAR_INT(header.size);
+
+                if (offset >= file_size) { *len = 0; return -2; }
+
                 lseek(tar_fd, offset, SEEK_CUR);
-                read(tar_fd, dest, header.size);
-                count = header.size;
-                tot_size = header.size;
+
+                size_t to_read = (file_size - offset > dest_len) ? dest_len : file_size - offset;
+                ssize_t bytes_read = read(tar_fd, dest, to_read);
+
+                if (bytes_read <= 0) { *len = 0; return -1; }
+
+                *len = bytes_read;
+                return file_size - offset - bytes_read;
             }
         }
+
+        //Skip file content (alignement des blocs)
+        size_t file_size = TAR_INT(header.size);
+        size_t skip_blocks = (file_size + 511) / 512; // Aligner à des blocs de 512-bytes
+        lseek(tar_fd, skip_blocks * 512, SEEK_CUR);
     }
-    *len = count;
-    if (count == 0) {
-        return -1;
-    }
-    return tot_size - count; // remaining bytes left to be read to reach the end of the file , if 0 then file was read in its entirety
+
+    *len = 0; // Path not found or no valid entry
+    lseek(tar_fd, 0, SEEK_SET);
+    return -1;
 }
