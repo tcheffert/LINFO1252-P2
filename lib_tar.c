@@ -17,30 +17,44 @@
  *         -3 if the archive contains a header with an invalid checksum value
  */
 int check_archive(int tar_fd) {
-    if (tar_fd == NULL)
-        return 0;
-
     tar_header_t header;
-    int non_null_headers_count;
-    while (read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
-        // Check if the header is null => end of archive
-        if (header.name[0] == '\0') {
-            break;
+    int valid_headers = 0;
+
+    // Reset file pointer au début
+    lseek(tar_fd, 0, SEEK_SET);
+
+    while (read(tar_fd, &header, sizeof(tar_header_t)) > 0 && header.name[0] != '\0')
+    { 
+        // Vérifie la valeur "magic" et "version"
+        if (strncmp(header.magic, TMAGIC, TMAGLEN) != 0) return -1;
+        if (strncmp(header.version, TVERSION, TVERSLEN) != 0) return -2;
+
+        // Calcule le checksum
+        long int header_chksum = TAR_INT(header.chksum);
+        memset(header.chksum, ' ', 8);
+        long int chksum_calculated = 0;
+
+        for (int i = 0; i < sizeof(tar_header_t); i++) {
+            chksum_calculated += ((uint8_t *)&header)[i];
         }
 
-        // Check magic value
-        if (strncmp(header.magic, TMAGIC, TMAGLEN - 1) != 0 || header.magic[TMAGLEN - 1] != '\0') {
-            return -1;
-        }
+        // Vérifie le checksum
+        if (header_chksum != chksum_calculated) 
+            return -3;
 
-        // Check version value
-        if (strncmp(header.version, TVERSION, 2) != 0) {
-            return -2;
-        }
 
-        non_null_headers_count++;
+        //Skip file content (alignement des blocs)
+        size_t file_size = TAR_INT(header.size);
+        size_t skip_blocks = (file_size + 511) / 512; // Aligner à des blocs de 512-bytes
+        lseek(tar_fd, skip_blocks * 512, SEEK_CUR);
+
+
+        valid_headers++;
     }
-    return non_null_headers_count;
+
+    // Reset file pointer au début
+    lseek(tar_fd, 0, SEEK_SET);
+    return valid_headers;
 }
 
 /**
