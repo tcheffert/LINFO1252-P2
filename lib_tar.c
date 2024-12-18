@@ -207,32 +207,32 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
     lseek(tar_fd, 0, SEEK_SET);
 
     while (read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
-        // End of the archive
+        // Check si c'est la fin de l'archive -> si oui, break
         if (header.name[0] == '\0') {
             break;
         }
 
-        // Verify the header is a valid entry
+        // Check si le header est une entrée VALIDE
         if (strncmp(header.name, path, path_len) == 0 && (header.name[path_len] == '/' || header.name[path_len] == '\0')) {
-            // Extract the relative name after `path`
+            // Get le nom après le "path"
             const char *relative_path = header.name + path_len;
 
-            // Skip the directory itself
+            // Skip le directory
             if (strlen(relative_path) == 0 || (strlen(relative_path) == 1 && relative_path[0] == '/')) {
                 continue;
             }
 
-            // Skip files in subdirectories
+            // Skip les files dans les subdir
             if (strchr(relative_path, '/') != NULL && strchr(relative_path, '/') != relative_path + strlen(relative_path) - 1) {
                 continue;
             }
 
-            // Add the entry to the `entries` array
+            // Ajoute l'entrée au tableau "entries"
             if (count < max_entries) {
                 strncpy(entries[count], header.name, strlen(header.name) + 1);
                 count++;
             } else {
-                // Too many entries to fit in the array
+                // Trop d'entrée dans le tab
                 *no_entries = count;
                 return -1;
             }
