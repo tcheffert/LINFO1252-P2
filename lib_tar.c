@@ -1,5 +1,4 @@
 #include "lib_tar.h"
-#include "helper.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -213,19 +212,11 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
     } else {
         strncpy(normalized_path, path, sizeof(normalized_path));
     }
-    
-    normalize_path(normalized_path);
 
-    // Reset the file descriptor to the beginning of the archive
     lseek(tar_fd, 0, SEEK_SET);
 
     while (read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
         if (header.name[0] == '\0') {
-            break;
-        }
-
-        // Check for padding blocks at the end of the archive
-        if (memcmp(&header, "\0", sizeof(tar_header_t)) == 0) {
             break;
         }
 
