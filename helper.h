@@ -1,3 +1,4 @@
+#include "lib_tar.h"
 // Normalize the path to handle special cases like './', '../', or '//'
 void normalize_path(char *path)
 {

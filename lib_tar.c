@@ -1,4 +1,5 @@
 #include "lib_tar.h"
+#include "helper.h"
 #include <string.h>
 #include <stdio.h>
 
