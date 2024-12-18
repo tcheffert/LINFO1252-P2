@@ -216,64 +216,54 @@ int is_symlink(int tar_fd, char *path) {
  *         any other value otherwise.
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
-    tar_header_t header;
-    size_t count = 0; 
-    size_t max_entries = *no_entries; 
-    size_t path_len = strlen(path);
+    int end = lseek(tar_fd, 0, SEEK_END); // Fin de l'archive
+    lseek(tar_fd, 0, SEEK_SET);           // Revenir au début
+    size_t i = 0;
+    int nb_backslash = count_slashes(path);
 
-    // Normalize path to always end with '/'
-    char normalized_path[512];
-    if (path[path_len - 1] != '/') {
-        snprintf(normalized_path, sizeof(normalized_path), "%s/", path);
-        path_len++;
-    } else {
-        strncpy(normalized_path, path, sizeof(normalized_path));
-    }
+    // Parcours des en-têtes dans l'archive
+    while (lseek(tar_fd, 0, SEEK_CUR) < end) {
+        // Allouer de la mémoire pour l'en-tête
+        tar_header_t *current = malloc(sizeof(tar_header_t));
+        read_header(tar_fd, current);
 
-    lseek(tar_fd, 0, SEEK_SET);
-
-    while (read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
-        if (header.name[0] == '\0') {
-            break;
+        // Vérifier si c'est un symlink pointant vers un répertoire
+        if (current->typeflag == SYMTYPE && strcmp(current->name, path) == 0) {
+            if (is_file(tar_fd, current->linkname)) {
+                free(current);
+                return 0; // Le lien pointe vers un fichier, pas un répertoire
+            }
+            char *newPath = strcat(current->linkname, "/");
+            if (!is_dir(tar_fd, newPath)) {
+                free(current);
+                return 0; // Le lien pointe vers un chemin invalide
+            }
+            free(current);
+            return list(tar_fd, newPath, entries, no_entries); // Appel récursif avec le chemin résolu
         }
 
-        // Check if header name matches the path
-        if (strncmp(header.name, normalized_path, path_len) == 0) {
-            const char *relative_path = header.name + path_len;
-
-            // Skip the directory itself
-            if (strlen(relative_path) == 0 || (strlen(relative_path) == 1 && relative_path[0] == '/')) {
-                continue;
-            }
-
-            // Skip files in subdirectories
-            const char *slash = strchr(relative_path, '/');
-            if (slash != NULL && *(slash + 1) != '\0') {
-                continue;
-            }
-
-            // Add entry to the entries array
-            if (count < max_entries) {
-                size_t entry_len = strlen(header.name);
-                if (entry_len < 512) {
-                    strncpy(entries[count], header.name, entry_len + 1);
-                    count++;
-                }
-            } else {
-                *no_entries = count;
-                return -1;
-            }
+        // Vérifier si l'entrée appartient au répertoire cible
+        if ((strstr(current->name, path) != NULL) && 
+            (strcmp(current->name, path) != 0) && 
+            ((count_slashes(current->name) == nb_backslash) || 
+             (count_slashes(current->name) == nb_backslash + 1 && current->name[strlen(current->name) - 1] == '/'))) {
+            entries[i] = current->name;
+            i++;
         }
 
-        // Skip file content
-        size_t file_size = TAR_INT(header.size);
-        size_t skip_blocks = (file_size + 511) / 512;
-        lseek(tar_fd, skip_blocks * 512, SEEK_CUR);
+        // Passer à l'en-tête suivant
+        int nb_blocks = TAR_INT(current->size) / 512;
+        if (TAR_INT(current->size) % 512 != 0) {
+            nb_blocks++;
+        }
+        lseek(tar_fd, nb_blocks * 512, SEEK_CUR);
+        free(current);
     }
 
-    *no_entries = count;
+    *no_entries = i;
     lseek(tar_fd, 0, SEEK_SET);
-    return count > 0 ? 1 : 0;
+
+    return (i == 0) ? 0 : 1;
 }
 
 /**
