@@ -199,25 +199,55 @@ int is_symlink(int tar_fd, char *path) {
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
     tar_header_t header;
-    int count = 0;
-    while(read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
-        // Check if the header is null => end of archive
+    size_t count = 0; // Counter for entries added to the array
+    size_t max_entries = *no_entries; // Maximum number of entries allowed in `entries`
+    size_t path_len = strlen(path);
+
+    // Reset the file descriptor to the start of the archive
+    lseek(tar_fd, 0, SEEK_SET);
+
+    while (read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
+        // End of the archive
         if (header.name[0] == '\0') {
             break;
         }
 
-        // Check if the header name matches the path
-        if (strncmp(header.name, path, strlen(path)) == 0) {
-            // Check if the entry is a directory
-            if (header.typeflag == DIRTYPE) {
-                // Copy the entry name to the entries array
-                strncpy(entries[count], header.name, strlen(header.name));
+        // Verify the header is a valid entry
+        if (strncmp(header.name, path, path_len) == 0 && (header.name[path_len] == '/' || header.name[path_len] == '\0')) {
+            // Extract the relative name after `path`
+            const char *relative_path = header.name + path_len;
+
+            // Skip the directory itself
+            if (strlen(relative_path) == 0 || (strlen(relative_path) == 1 && relative_path[0] == '/')) {
+                continue;
+            }
+
+            // Skip files in subdirectories
+            if (strchr(relative_path, '/') != NULL && strchr(relative_path, '/') != relative_path + strlen(relative_path) - 1) {
+                continue;
+            }
+
+            // Add the entry to the `entries` array
+            if (count < max_entries) {
+                strncpy(entries[count], header.name, strlen(header.name) + 1);
                 count++;
+            } else {
+                // Too many entries to fit in the array
+                *no_entries = count;
+                return -1;
             }
         }
+
+        // Skip the content of the current file
+        size_t file_size = TAR_INT(header.size);
+        size_t skip_blocks = (file_size + 511) / 512; // Align to the nearest 512-byte block
+        lseek(tar_fd, skip_blocks * 512, SEEK_CUR);
     }
+
+    // Update the number of entries and reset the file descriptor
     *no_entries = count;
-    return count == 0 ? 0 : 1;
+    lseek(tar_fd, 0, SEEK_SET);
+    return count > 0 ? 1 : 0; // Return 1 if entries are found, 0 otherwise
 }
 
 /**
