@@ -1,5 +1,6 @@
 #include "lib_tar.h"
 #include <string.h>
+#include <stdio.h>
 
 /**
  * Checks whether the archive is valid.
@@ -199,55 +200,63 @@ int is_symlink(int tar_fd, char *path) {
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
     tar_header_t header;
-    size_t count = 0; // Counter pour les entrées ajoutées au tab
-    size_t max_entries = *no_entries; // Nbr max d'entrées autorisées
+    size_t count = 0; 
+    size_t max_entries = *no_entries; 
     size_t path_len = strlen(path);
 
-    // Reset le file descriptor au début de l'archive
+    // Normalize path to always end with '/'
+    char normalized_path[512];
+    if (path[path_len - 1] != '/') {
+        snprintf(normalized_path, sizeof(normalized_path), "%s/", path);
+        path_len++;
+    } else {
+        strncpy(normalized_path, path, sizeof(normalized_path));
+    }
+
     lseek(tar_fd, 0, SEEK_SET);
 
     while (read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
-        // Check si c'est la fin de l'archive -> si oui, break
         if (header.name[0] == '\0') {
             break;
         }
 
-        // Check si le header est une entrée VALIDE
-        if (strncmp(header.name, path, path_len) == 0 && (header.name[path_len] == '/' || header.name[path_len] == '\0')) {
-            // Get le nom après le "path"
+        // Check if header name matches the path
+        if (strncmp(header.name, normalized_path, path_len) == 0) {
             const char *relative_path = header.name + path_len;
 
-            // Skip le directory
+            // Skip the directory itself
             if (strlen(relative_path) == 0 || (strlen(relative_path) == 1 && relative_path[0] == '/')) {
                 continue;
             }
 
-            // Skip les files dans les subdir
-            if (strchr(relative_path, '/') != NULL && strchr(relative_path, '/') != relative_path + strlen(relative_path) - 1) {
+            // Skip files in subdirectories
+            const char *slash = strchr(relative_path, '/');
+            if (slash != NULL && *(slash + 1) != '\0') {
                 continue;
             }
 
-            // Ajoute l'entrée au tableau "entries"
+            // Add entry to the entries array
             if (count < max_entries) {
-                strncpy(entries[count], header.name, strlen(header.name) + 1);
-                count++;
+                size_t entry_len = strlen(header.name);
+                if (entry_len < 512) {
+                    strncpy(entries[count], header.name, entry_len + 1);
+                    count++;
+                }
             } else {
-                // Trop d'entrée dans le tab => return -1
                 *no_entries = count;
                 return -1;
             }
         }
 
-        // Skip the content of the current file
+        // Skip file content
         size_t file_size = TAR_INT(header.size);
-        size_t skip_blocks = (file_size + 511) / 512; // Align to the nearest 512-byte block
+        size_t skip_blocks = (file_size + 511) / 512;
         lseek(tar_fd, skip_blocks * 512, SEEK_CUR);
     }
 
-    // Update le nbr d'entrées et reset le file descriptor
     *no_entries = count;
     lseek(tar_fd, 0, SEEK_SET);
-    return count > 0 ? 1 : 0; // Return 1 si les entrées ont été trouvé, 0 sinon
+    return count > 0 ? 1 : 0;
 }
 
 /**
