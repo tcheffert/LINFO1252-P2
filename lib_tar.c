@@ -199,11 +199,11 @@ int is_symlink(int tar_fd, char *path) {
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
     tar_header_t header;
-    size_t count = 0; // Counter for entries added to the array
-    size_t max_entries = *no_entries; // Maximum number of entries allowed in `entries`
+    size_t count = 0; // Counter pour les entrées ajoutées au tab
+    size_t max_entries = *no_entries; // Nbr max d'entrées autorisées
     size_t path_len = strlen(path);
 
-    // Reset the file descriptor to the start of the archive
+    // Reset le file descriptor au début de l'archive
     lseek(tar_fd, 0, SEEK_SET);
 
     while (read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
@@ -232,7 +232,7 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
                 strncpy(entries[count], header.name, strlen(header.name) + 1);
                 count++;
             } else {
-                // Trop d'entrée dans le tab
+                // Trop d'entrée dans le tab => return -1
                 *no_entries = count;
                 return -1;
             }
@@ -244,10 +244,10 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
         lseek(tar_fd, skip_blocks * 512, SEEK_CUR);
     }
 
-    // Update the number of entries and reset the file descriptor
+    // Update le nbr d'entrées et reset le file descriptor
     *no_entries = count;
     lseek(tar_fd, 0, SEEK_SET);
-    return count > 0 ? 1 : 0; // Return 1 if entries are found, 0 otherwise
+    return count > 0 ? 1 : 0; // Return 1 si les entrées ont été trouvé, 0 sinon
 }
 
 /**
