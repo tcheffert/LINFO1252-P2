@@ -79,6 +79,10 @@ int exists(int tar_fd, char *path) {
         if (strncmp(header.name, path, strlen(path)) == 0) {
             return 1;
         }
+        // Skip file content
+        size_t file_size = TAR_INT(header.size);
+        size_t skip_blocks = (file_size + 511) / 512;
+        lseek(tar_fd, skip_blocks * 512, SEEK_CUR);
     }
     lseek(tar_fd, 0, SEEK_SET);
     return 0;
@@ -109,6 +113,10 @@ int is_dir(int tar_fd, char *path) {
 
             break;
         }
+        // Skip file content
+        size_t file_size = TAR_INT(header.size);
+        size_t skip_blocks = (file_size + 511) / 512;
+        lseek(tar_fd, skip_blocks * 512, SEEK_CUR);
     }
     return 0;
 }
@@ -139,6 +147,10 @@ int is_file(int tar_fd, char *path) {
 
             break; //L'entrée existe bien MAIS n'est pas un file
         }
+        // Skip file content
+        size_t file_size = TAR_INT(header.size);
+        size_t skip_blocks = (file_size + 511) / 512;
+        lseek(tar_fd, skip_blocks * 512, SEEK_CUR);
         
     }
     // Reset file pointer au début de l'archive
@@ -169,6 +181,10 @@ int is_symlink(int tar_fd, char *path) {
             }
             break;
         }
+        // Skip file content
+        size_t file_size = TAR_INT(header.size);
+        size_t skip_blocks = (file_size + 511) / 512;
+        lseek(tar_fd, skip_blocks * 512, SEEK_CUR);
     }
     // Reset file pointer au début de l'archive
     lseek(tar_fd, 0, SEEK_SET);
