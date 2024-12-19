@@ -1,7 +1,5 @@
 #include "lib_tar.h"
 #include "helper.h"
-#include <string.h>
-#include <stdio.h>
 
 /**
  * Checks whether the archive is valid.
@@ -216,64 +214,81 @@ int is_symlink(int tar_fd, char *path) {
  *         any other value otherwise.
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
-    tar_header_t header;
-    size_t count = 0; 
-    size_t max_entries = *no_entries; 
-    size_t path_len = strlen(path);
+    size_t i = 0; 
+    size_t max_entries = *no_entries; // Nbr max d'entrées ds entries
 
-    // Normalize path to always end with '/'
+    // On change le path pour qu'il finisse toujours par un '/' -> via fct dans helper.h
     char normalized_path[512];
-    if (path[path_len - 1] != '/') {
-        snprintf(normalized_path, sizeof(normalized_path), "%s/", path);
-        path_len++;
-    } else {
-        strncpy(normalized_path, path, sizeof(normalized_path));
-    }
+    size_t path_len = normalize_path(path, normalized_path);
 
-    lseek(tar_fd, 0, SEEK_SET);
+    int end = lseek(tar_fd, 0, SEEK_END); // Get la taille tot de l'archive
+    lseek(tar_fd, 0, SEEK_SET); 
 
-    while (read(tar_fd, &header, sizeof(tar_header_t)) == sizeof(tar_header_t)) {
-        if (header.name[0] == '\0') {
-            break;
+    // Parcours de l'archive jusqu'à end
+    while (lseek(tar_fd, 0, SEEK_CUR) < end) {
+        tar_header_t current; // Stocke le current header
+        if (read(tar_fd, &current, sizeof(tar_header_t)) != sizeof(tar_header_t)) {
+            break; // Si on ne peut pas lire un header COMPLET -> break
         }
 
-        // Check if header name matches the path
-        if (strncmp(header.name, normalized_path, path_len) == 0) {
-            const char *relative_path = header.name + path_len;
+        // Gestion des liens symboliques
+        if (current.typeflag == SYMTYPE && strcmp(current.name, path) == 0) {
+            // Pointe vers un fichier -> return 0 (non valide)
+            if (is_file(tar_fd, current.linkname) == 1) {
+                return 0;
+            }
+            // Add '/' si le chemin est un dossier -> puis appel récursif de list (on recommence pour ce nouv chemin)
+            char *newPath = strcat(current.linkname, "/");
+            if (is_dir(tar_fd, newPath) == 0) {
+                return 0; // Chemin invalide ou non accessible
+            }
+            return list(tar_fd, newPath, entries, no_entries); 
+        }
 
-            // Skip the directory itself
+        // Vérif si chemin a bien été normalisé
+        if (strncmp(current.name, normalized_path, path_len) == 0) {
+            const char *relative_path = current.name + path_len; 
+
+            // Si c'est le répertoire lui-même -> on ignore l'entréé (vide ou juste un '/')
             if (strlen(relative_path) == 0 || (strlen(relative_path) == 1 && relative_path[0] == '/')) {
                 continue;
             }
 
-            // Skip files in subdirectories
+            // Pass les fichiers dans les sous-répertoires
             const char *slash = strchr(relative_path, '/');
             if (slash != NULL && *(slash + 1) != '\0') {
                 continue;
             }
 
-            // Add entry to the entries array
-            if (count < max_entries) {
-                size_t entry_len = strlen(header.name);
-                if (entry_len < 512) {
-                    strncpy(entries[count], header.name, entry_len + 1);
-                    count++;
-                }
+            // Si on a encore de la place -> add l'entrée au tab
+            if (i < max_entries) {
+                strncpy(entries[i], current.name, strlen(current.name) + 1);
+                i++;
             } else {
-                *no_entries = count;
+                // Si tab full -> return -1
+                *no_entries = i;
+                lseek(tar_fd, 0, SEEK_SET);
                 return -1;
             }
         }
 
-        // Skip file content
-        size_t file_size = TAR_INT(header.size);
-        size_t skip_blocks = (file_size + 511) / 512;
+        // Skip file content -> passer au prochain header
+        size_t file_size = TAR_INT(current.size);
+        size_t skip_blocks = (file_size + 511) / 512; // Alignement blocs  512o 
         lseek(tar_fd, skip_blocks * 512, SEEK_CUR);
     }
 
-    *no_entries = count;
+    // MAJ nbr entrées
+    *no_entries = i;
     lseek(tar_fd, 0, SEEK_SET);
-    return count > 0 ? 1 : 0;
+
+    // Aucune entrée -> return 0
+    if (i == 0) {
+        return 0;
+    }
+
+    //Sinon, au moins une -> 1
+    return 1; 
 }
 
 /**

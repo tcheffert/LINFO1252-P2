@@ -3,13 +3,13 @@
 #include <stdio.h>
 
 
-/**
- * Counts the number of slashes in a given path.
- */
-int count_slashes(char *path) {
-    int count = 0;
-    for (size_t i = 0; i < strlen(path); i++) {
-        if (path[i] == '/') count++;
+size_t normalize_path(const char *path, char *normalized_path) {
+    size_t path_len = strlen(path);
+    if (path[path_len - 1] != '/') {
+        snprintf(normalized_path, 512, "%s/", path);
+        return path_len + 1; // Length update avec '/'
+    } else {
+        strncpy(normalized_path, path, 512);
+        return path_len; // Length originale
     }
-    return count;
 }
