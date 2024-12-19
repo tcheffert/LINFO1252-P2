@@ -342,7 +342,7 @@ ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *
             {
                 size_t file_size = TAR_INT(header.size);
 
-                if (offset >= file_size)
+                if (offset >= file_size) // Cannot read offset since out of the file range
                 {
                     *len = 0;
                     return -2;
