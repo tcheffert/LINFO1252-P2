@@ -294,13 +294,8 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries)
     lseek(tar_fd, 0, SEEK_SET);
 
     // Aucune entrée -> return 0
-    if (i == 0)
-    {
-        return 0;
-    }
-
     // Sinon, au moins une -> 1
-    return 1;
+    return i;
 }
 
 /**
